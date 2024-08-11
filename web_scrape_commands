@@ -1,0 +1,81 @@
+Command to display all records without pagination
+$('#TblData').DataTable().page.len(-1).draw()
+
+const billTablesData = [];
+
+const mainTableRows = Array.from(document.querySelectorAll('#TblData tbody tr'));
+const mainTableData = mainTableRows.map(row => {
+    const columns = row.querySelectorAll('td');
+    return {
+        transaction_date: columns[0].textContent.trim(),
+        voucher: columns[1].textContent.trim(),
+        voucher_no: columns[2].textContent.trim(),
+        code: columns[3].textContent.trim(),
+        description: columns[4].textContent.trim(),
+        cheque_no: columns[5].textContent.trim(),
+        debit: parseFloat(columns[6].textContent.trim()),
+        credit: parseFloat(columns[7].textContent.trim()),
+        running_bal: parseFloat(columns[8].textContent.trim())
+    };
+});
+
+
+
+
+const tableRows = Array.from(document.querySelectorAll('#TblData tbody tr'));
+
+// Filter table rows where the voucher type is "BILL"
+const billRows = tableRows.filter(row => {
+    // Get the text content of the second column in the row (voucher type)
+    const voucherType = row.querySelector('td:nth-child(2)').textContent.trim();
+    // Check if the voucher type is "BILL"
+    return voucherType === "BILL";
+});
+
+// Extract hyperlinks from the filtered rows
+const billLinks = billRows.map(row => {
+    const link = row.querySelector('td:nth-child(2) a').href;
+    const transactionDate = row.querySelector('td:first-child').textContent.trim();
+    return { link, transactionDate };
+});
+
+
+async function processBillLinks() {
+    for (const linkInfo of billLinks) {
+        const url = linkInfo.link
+        const transactionDate = linkInfo.transactionDate;
+        const data = await extractBillData(url, transactionDate);
+        billTablesData.push(...data);
+    }
+}
+
+async function extractBillData(url, transaction_date) {
+    const response = await fetch(url);
+    const html = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const billTableRows = Array.from(doc.querySelectorAll('#TblData tbody tr'));
+    const billTableData = billTableRows.map(row => {
+        const columns = row.querySelectorAll('td');
+        return {
+            transaction_date: transaction_date,
+            scrip_code: columns[0].textContent.trim(),
+            scrip_name: columns[1].textContent.trim(),
+            buy_qty: parseFloat(columns[2].textContent.trim()),
+            buy_rate: parseFloat(columns[3].textContent.trim()),
+            buy_amount: parseFloat(columns[4].textContent.trim()),
+            sell_qty: parseFloat(columns[5].textContent.trim()),
+            sell_rate: parseFloat(columns[6].textContent.trim()),
+            sell_amount: parseFloat(columns[7].textContent.trim()),
+            net_qty: parseFloat(columns[8].textContent.trim()),
+            net_rate: parseFloat(columns[9].textContent.trim()),
+            net_amount: parseFloat(columns[10].textContent.trim())
+        };
+    });
+    return billTableData;
+}
+
+
+processBillLinks().then(() => {
+    console.log(JSON.stringify(billTablesData));
+});
