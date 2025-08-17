@@ -1,6 +1,5 @@
 import pandas as pd
-from datetime import datetime, timedelta
-from collections import defaultdict
+from datetime import datetime
 from sqlalchemy import create_engine
 import json
 
@@ -32,10 +31,6 @@ df = pd.DataFrame(data)
 # Convert transaction_date to datetime
 df['transaction_date'] = pd.to_datetime(df['transaction_date'], format='%d/%m/%Y')
 
-# User-defined start date
-fy_start_date = datetime.strptime("01/04/2023", "%d/%m/%Y")
-fy_end_date = datetime.strptime("31/03/2024", "%d/%m/%Y")
-
 # Function to filter transactions by date
 def filter_by_date(df, end_date):
     return df[df['transaction_date'] <= end_date]
@@ -54,23 +49,44 @@ symbols_to_skip = ["2.50GOLDBONDS20", "800318", "GOLD", "NIPPON LIFE IND",
 
 df = df[~df['name'].isin(symbols_to_skip)]
 df = df[df['code'] != "0000"]
+df = df[df['name'] != "SEBITOC"]
 df = df[~((df['buy_qty'] != 0) & (df['sell_qty'] != 0))]
 # df = df['code'].dropna().astype(float).drop_duplicates().sort_values().astype(int)
 # symbols_df_code = symbols_df['code'].dropna().astype(float).drop_duplicates().sort_values().astype(int)
 
 
-df['name'] = df['code'].map(lambda x: symbols_df[symbols_df['code'] == x]['name'].iloc[0])
-df['isin'] = df['code'].map(lambda x: symbols_df[symbols_df['code'] == x]['isin'].iloc[0])
+# Safely map codes to names and ISINs, keeping original name if no match is found
+def safe_map_name(x, original_name):
+    matches = symbols_df[symbols_df['code'] == x]['name']
+    return matches.iloc[0] if not matches.empty else original_name
+
+def safe_map_isin(x):
+    matches = symbols_df[symbols_df['code'] == x]['isin']
+    return matches.iloc[0] if not matches.empty else 'UNKNOWN'
+
+# Keep original name if no match is found in symbols_df
+df['name'] = df.apply(lambda row: safe_map_name(row['code'], row['name']), axis=1)
+df['isin'] = df['code'].map(safe_map_isin)
 df['type'] = df.apply(lambda row: 'BUY' if row['buy_qty'] > 0 else ('SELL' if row['sell_qty'] > 0 else 'UNKNOWN'), axis=1)
 df['available_qty'] = df.groupby('code')['net_qty'].cumsum()
 df['net_qty'] = abs(df['net_qty'])
 df['ltcg'] = 0.0
 df['stcg'] = 0.0
 
-gains_df = calculate_gains(df.copy())
+# Define financial year dates
+fy_start_date = datetime(2024, 4, 1)
+fy_end_date = datetime(2025, 3, 31)
 
-fy_start_date = datetime(2023, 4, 1)
-fy_end_date = datetime(2024, 3, 31)
-filtered_df = gains_df[(gains_df['ts'] >= fy_start_date) & (gains_df['ts'] <= fy_end_date)]
+# Calculate gains using the new function with financial year parameters
+gains_df, excel_path = calculate_gains(df, fy_start_date, fy_end_date)
 
-print(df.head)
+# Calculate totals directly from the gains dataframe
+total_ltcg = gains_df['ltcg'].sum()
+total_stcg = gains_df['stcg'].sum()
+total_profit = total_ltcg + total_stcg
+
+# Print the results
+print(f"\nFinancial Year: {fy_start_date.strftime('%Y')}-{fy_end_date.strftime('%Y')}")
+print(f"Total Profit: ₹{total_profit:,.2f}")
+print(f"Total LTCG: ₹{total_ltcg:,.2f}")
+print(f"Total STCG: ₹{total_stcg:,.2f}")
